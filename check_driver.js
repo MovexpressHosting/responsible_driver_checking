@@ -1,14 +1,22 @@
-// websocket-server.js
 const WebSocket = require('ws');
 const mysql = require('mysql2');
-const wss = new WebSocket.Server({ port: 8080 });
 
-// Database connection
+// Create WebSocket server on port provided by Render or default to 8080
+const PORT = process.env.PORT || 8080;
+const wss = new WebSocket.Server({ 
+  port: PORT,
+  host: '0.0.0.0' // Important for Render
+});
+
+console.log(`WebSocket server starting on port ${PORT}`);
+
+// Database connection using Render environment variables
 const db = mysql.createConnection({
-  host: 'srv657.hstgr.io',
-  user: 'u442108067_mydb',
-  password: 'mOhe6ln0iP>',
-  database: 'u442108067_mydb'
+  host: process.env.DB_HOST || 'srv657.hstgr.io',
+  user: process.env.DB_USER || 'u442108067_mydb',
+  password: process.env.DB_PASSWORD || 'mOhe6ln0iP>',
+  database: process.env.DB_NAME || 'u442108067_mydb',
+  port: process.env.DB_PORT || 3306
 });
 
 db.connect((err) => {
@@ -19,15 +27,12 @@ db.connect((err) => {
   console.log('Connected to database');
 });
 
-const clients = new Map(); // Map<bookingId, Set<WebSocket>>
-
-// Track last checked assignment state
+const clients = new Map();
 const lastAssignmentState = new Map();
 
 // Function to check for driver assignment changes
 async function checkDriverAssignments() {
   try {
-    // Get all bookings that have clients subscribed
     if (clients.size === 0) return;
 
     const bookingIds = Array.from(clients.keys());
@@ -45,11 +50,9 @@ async function checkDriverAssignments() {
       const currentDriverId = row.assigned_driver_id;
       const lastDriverId = lastAssignmentState.get(row.id);
       
-      // If assignment changed and now has a driver
       if (currentDriverId && currentDriverId !== lastDriverId) {
         console.log(`Driver assignment changed for booking ${row.id}`);
         
-        // Get driver details
         const driverQuery = 'SELECT id, firstname, lastname, email, phone FROM drivers WHERE id = ?';
         const [driverRows] = await db.promise().execute(driverQuery, [currentDriverId]);
         
@@ -63,13 +66,10 @@ async function checkDriverAssignments() {
           });
         }
         
-        // Update last known state
         lastAssignmentState.set(row.id, currentDriverId);
       } else if (!currentDriverId && lastDriverId) {
-        // Driver was unassigned
         lastAssignmentState.set(row.id, null);
       } else if (!lastAssignmentState.has(row.id)) {
-        // First time checking this booking
         lastAssignmentState.set(row.id, currentDriverId);
       }
     }
@@ -78,7 +78,6 @@ async function checkDriverAssignments() {
   }
 }
 
-// Function to broadcast to all clients subscribed to a booking
 function broadcastToBooking(bookingId, message) {
   const subscribedClients = clients.get(bookingId);
   if (subscribedClients) {
@@ -102,15 +101,12 @@ wss.on('connection', (ws) => {
       if (data.type === 'SUBSCRIBE_BOOKING') {
         const bookingId = data.bookingId;
         
-        // Add client to booking subscription
         if (!clients.has(bookingId)) {
           clients.set(bookingId, new Set());
         }
         clients.get(bookingId).add(ws);
         
         console.log(`Client subscribed to booking ${bookingId}`);
-        
-        // Send current state immediately
         sendCurrentDriverState(ws, bookingId);
       }
       
@@ -132,7 +128,6 @@ wss.on('connection', (ws) => {
   });
   
   ws.on('close', () => {
-    // Remove client from all subscriptions
     clients.forEach((subscribedClients, bookingId) => {
       subscribedClients.delete(ws);
       if (subscribedClients.size === 0) {
@@ -186,12 +181,29 @@ async function sendCurrentDriverState(ws, bookingId) {
 // Poll database every 2 seconds for changes
 setInterval(checkDriverAssignments, 2000);
 
-// Cleanup on server shutdown
+// Health check endpoint for Render
+const http = require('http');
+const healthServer = http.createServer((req, res) => {
+  if (req.url === '/health') {
+    res.writeHead(200);
+    res.end('OK');
+  } else {
+    res.writeHead(404);
+    res.end();
+  }
+});
+
+healthServer.listen(8081, '0.0.0.0', () => {
+  console.log('Health check server running on port 8081');
+});
+
+console.log('WebSocket server running on port', PORT);
+
+// Cleanup
 process.on('SIGINT', () => {
   console.log('Shutting down WebSocket server...');
   db.end();
   wss.close();
+  healthServer.close();
   process.exit(0);
 });
-
-console.log('WebSocket server running on port 8080');
