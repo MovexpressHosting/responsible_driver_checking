@@ -5,10 +5,10 @@ const wss = new WebSocket.Server({ port: 8080 });
 
 // Database connection
 const db = mysql.createConnection({
-  host: 'localhost',
-  user: 'your_username',
-  password: 'your_password',
-  database: 'your_database'
+  host: 'srv657.hstgr.io',
+  user: 'u442108067_mydb',
+  password: 'mOhe6ln0iP>',
+  database: 'u442108067_mydb'
 });
 
 db.connect((err) => {
