@@ -1,0 +1,17 @@
+{
+  "name": "driver-websocket-server",
+  "version": "1.0.0",
+  "description": "WebSocket server for real-time driver assignment updates",
+  "main": "check_driver.js",
+  "scripts": {
+    "start": "node check_driver.js",
+    "dev": "node check_driver.js"
+  },
+  "dependencies": {
+    "ws": "^8.14.2",
+    "mysql2": "^3.6.5"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
